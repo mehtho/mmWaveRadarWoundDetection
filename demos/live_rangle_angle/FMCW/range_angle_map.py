@@ -58,7 +58,8 @@ class LivePlot:
 
         self._fig, self._ax = plt.subplots(nrows=1, ncols=1)
 
-        self._fig.canvas.manager.set_window_title("Range-Angle-Map using Digital Beam Forming")
+        self._fig.canvas.manager.set_window_title(
+            "Range-Angle-Map using Digital Beam Forming")
         self._fig.canvas.mpl_connect('close_event', self.close)
         self._is_window_open = True
 
@@ -119,25 +120,25 @@ class LivePlot:
 # Main logic
 # -------------------------------------------------
 if __name__ == '__main__':
-    num_beams = 27  # number of beams
-    max_angle_degrees = 40  # maximum angle, angle ranges from -40 to +40 degrees
+    num_beams = 27
+    max_angle_degrees = 40
 
     config = FmcwSimpleSequenceConfig(
-        frame_repetition_time_s=0.15,  # Frame repetition time 0.15s (frame rate of 6.667Hz)
-        chirp_repetition_time_s=0.0005,  # Chirp repetition time (or pulse repetition time) of 0.5ms
-        num_chirps=128,  # chirps per frame
-        tdm_mimo=False,  # MIMO disabled
+        frame_repetition_time_s=0.08,
+        chirp_repetition_time_s=0.00035,
+        num_chirps=128,
+        tdm_mimo=False,
         chirp=FmcwSequenceChirp(
-            start_frequency_Hz=60e9,  # start frequency: 60 GHz
-            end_frequency_Hz=61.5e9,  # end frequency: 61.5 GHz
-            sample_rate_Hz=1e6,  # ADC sample rate of 1MHz
-            num_samples=64,  # 64 samples per chirp
-            rx_mask=5,  # RX antennas 1 and 3 activated
-            tx_mask=1,  # TX antenna 1 activated
-            tx_power_level=31,  # TX power level of 31
-            lp_cutoff_Hz=500000,  # Anti-aliasing cutoff frequency of 500kHz
-            hp_cutoff_Hz=80000,  # 80kHz cutoff frequency for high-pass filter
-            if_gain_dB=33,  # 33dB if gain
+            start_frequency_Hz=58.0e9,
+            end_frequency_Hz=63.5e9,
+            sample_rate_Hz=2_000_000,
+            num_samples=64,
+            rx_mask=0b111,
+            tx_mask=0b001,
+            tx_power_level=18,
+            lp_cutoff_Hz=500_000,
+            hp_cutoff_Hz=20_000,
+            if_gain_dB=20
         )
     )
 
@@ -161,8 +162,10 @@ if __name__ == '__main__':
         num_rx_antennas = num_rx_antennas_from_rx_mask(chirp.rx_mask)
 
         # Create objects for Range-Doppler, Digital Beam Forming, and plotting.
-        doppler = DopplerAlgo(config.chirp.num_samples, config.num_chirps, num_rx_antennas)
-        dbf = DigitalBeamForming(num_rx_antennas, num_beams=num_beams, max_angle_degrees=max_angle_degrees)
+        doppler = DopplerAlgo(config.chirp.num_samples,
+                              config.num_chirps, num_rx_antennas)
+        dbf = DigitalBeamForming(
+            num_rx_antennas, num_beams=num_beams, max_angle_degrees=max_angle_degrees, d_by_lambda=0.25)
         plot = LivePlot(max_angle_degrees, max_range_m)
 
         while not plot.is_closed():
@@ -170,7 +173,8 @@ if __name__ == '__main__':
             frame_contents = device.get_next_frame()
             frame = frame_contents[0]
 
-            rd_spectrum = np.zeros((config.chirp.num_samples, 2 * config.num_chirps, num_rx_antennas), dtype=complex)
+            rd_spectrum = np.zeros(
+                (config.chirp.num_samples, 2 * config.num_chirps, num_rx_antennas), dtype=complex)
 
             beam_range_energy = np.zeros((config.chirp.num_samples, num_beams))
 
@@ -186,7 +190,8 @@ if __name__ == '__main__':
             rd_beam_formed = dbf.run(rd_spectrum)
             for i_beam in range(num_beams):
                 doppler_i = rd_beam_formed[:, :, i_beam]
-                beam_range_energy[:, i_beam] += np.linalg.norm(doppler_i, axis=1) / np.sqrt(num_beams)
+                beam_range_energy[:, i_beam] += np.linalg.norm(
+                    doppler_i, axis=1) / np.sqrt(num_beams)
 
             # Maximum energy in Range-Angle map
             max_energy = np.max(beam_range_energy)
@@ -199,10 +204,13 @@ if __name__ == '__main__':
             beam_range_energy = scale * (beam_range_energy / max_energy - 1)
 
             # Find dominant angle of target
-            _, idx = np.unravel_index(beam_range_energy.argmax(), beam_range_energy.shape)
-            angle_degrees = np.linspace(-max_angle_degrees, max_angle_degrees, num_beams)[idx]
+            _, idx = np.unravel_index(
+                beam_range_energy.argmax(), beam_range_energy.shape)
+            angle_degrees = np.linspace(-max_angle_degrees,
+                                        max_angle_degrees, num_beams)[idx]
 
             # And plot...
-            plot.draw(beam_range_energy, f"Range-Angle map using DBF, angle={angle_degrees:+02.0f} degrees")
+            plot.draw(
+                beam_range_energy, f"Range-Angle map using DBF, angle={angle_degrees:+02.0f} degrees")
 
         plot.close()
