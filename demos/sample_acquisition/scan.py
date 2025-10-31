@@ -6,7 +6,7 @@ from ifxradarsdk.fmcw.types import FmcwSimpleSequenceConfig, FmcwSequenceChirp
 
 from pathlib import Path
 
-NUM_SAMPLES = 10
+NUM_SAMPLES = 100
 DATA_DIR = "output"
 
 
@@ -20,8 +20,7 @@ def num_rx_antennas_from_rx_mask(rx_mask):
 
 
 if __name__ == '__main__':
-    num_beams = 27
-    max_angle_degrees = 40
+    num_beams = 11
 
     config = FmcwSimpleSequenceConfig(
         frame_repetition_time_s=0.08,
@@ -33,7 +32,7 @@ if __name__ == '__main__':
             end_frequency_Hz=63.5e9,
             sample_rate_Hz=2_000_000,
             num_samples=64,
-            rx_mask=0b111,
+            rx_mask=0b101,
             tx_mask=0b001,
             tx_power_level=18,
             lp_cutoff_Hz=500_000,

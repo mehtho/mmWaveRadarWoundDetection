@@ -200,7 +200,7 @@ if __name__ == '__main__':
             # way such that the maximum always has the same value, independent
             # on the original input peak. A proper peak search can greatly
             # improve this algorithm.
-            scale = 150
+            scale = 1500
             beam_range_energy = scale * (beam_range_energy / max_energy - 1)
 
             # Find dominant angle of target
@@ -209,8 +209,12 @@ if __name__ == '__main__':
             angle_degrees = np.linspace(-max_angle_degrees,
                                         max_angle_degrees, num_beams)[idx]
 
+            max_energy *= 1000
+
+            # print(max_energy)
             # And plot...
+            # if max_energy > 1:
             plot.draw(
-                beam_range_energy, f"Range-Angle map using DBF, angle={angle_degrees:+02.0f} degrees")
+                beam_range_energy, f"Range-Angle map using DBF, max energy={max_energy * scale:+02.0f}")
 
         plot.close()
