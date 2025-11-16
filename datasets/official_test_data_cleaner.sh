@@ -4,8 +4,8 @@ rm -rf "Official Testing Data/j/0.0"
 
 find "Official Testing Data" -type d -print0 |
 while IFS= read -r -d '' dir; do
-  # Count .npy files in this directory
-  count=$(find "$dir" -maxdepth 1 -type f -name "*.npy" | wc -l)
+  # Count all regular files in this directory (any extension)
+  count=$(find "$dir" -maxdepth 1 -type f | wc -l)
   [ "$count" -eq 9 ] || continue
 
   parent=$(basename "$dir")
@@ -13,7 +13,8 @@ while IFS= read -r -d '' dir; do
 
   i=0
 
-  find "$dir" -maxdepth 1 -type f -name "*.npy" -print0 | sort -z |
+  # Process all regular files, sorted, null-delimited
+  find "$dir" -maxdepth 1 -type f -print0 | sort -z |
   while IFS= read -r -d '' f; do
     new="$dir/${parent}_${i}.npy"
     echo "  mv -- \"$f\" \"$new\""
@@ -21,4 +22,3 @@ while IFS= read -r -d '' dir; do
     i=$((i+1))
   done
 done
-

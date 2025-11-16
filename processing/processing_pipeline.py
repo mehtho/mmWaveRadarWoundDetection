@@ -36,10 +36,10 @@ def get_numeric_label(sample_dir: Path) -> float:
 
 def iter_sample_dirs():
     """
-    Yield (label, sample_dir, npy_files) for each leaf sample directory.
+    Yield (label, sample_dir, npy_files) for each sample directory.
 
-    A 'sample' is defined as a leaf directory (no subdirectories)
-    that contains at least one .npy file (you can enforce 9 if you like).
+    A 'sample' is defined as any directory under TRAINING_DIRS
+    that contains exactly 9 .npy files (regardless of subdirectories).
     """
     for top in TRAINING_DIRS:
         root = DATASET_DIR / top
@@ -51,18 +51,14 @@ def iter_sample_dirs():
             if not subdir.is_dir():
                 continue
 
-            # Leaf dir = no child directories
-            if any(child.is_dir() for child in subdir.iterdir()):
-                continue
-
             npy_files = sorted(subdir.glob("*.npy"))
             if not npy_files:
                 continue
 
-            # If you want to enforce exactly 9:
             if len(npy_files) != 9:
                 print(
-                    f"[WARN] {subdir} has {len(npy_files)} .npy files (expected 9)")
+                    f"[WARN] {subdir} has {len(npy_files)} .npy files (expected 9)"
+                )
                 continue
 
             label = get_numeric_label(subdir)
@@ -85,20 +81,35 @@ def filter_sample(
 
 
 def process_all_samples():
+    X = []
+    y = []
+
     for label, sample_dir, npy_files in iter_sample_dirs():
+        print(sample_dir)
         arrays = [np.load(f) for f in npy_files]
         rams = range_angle_matrix_for_9_files(arrays)  # Returns (9, 50, 5, 11)
 
         filtered = filter_sample(rams)
 
-        features = extract_features(filtered)
+        features = extract_features(filtered)  # Returns (9, 5, 4)
 
-        # Example of how you might save features later:
-        # out_name = f"{sample_dir.name}_label_{label}.npz"
-        # out_path = OUTPUT_DIR / out_name
-        # np.savez_compressed(out_path, **result)
+        X.append(features.flatten())
+        y.append(label)
 
-        print(f"  -> transform result (preview): {features.shape}")
+    # Convert to arrays
+    X_arr = np.array(X, dtype=np.float32)
+    y_arr = np.array(y, dtype=np.float32)
+
+    print("Final dataset:")
+    print("  X shape:", X_arr.shape)
+    print("  y shape:", y_arr.shape)
+
+    # Save to OUTPUT_DIR
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    np.save(OUTPUT_DIR / "X.npy", X_arr)
+    np.save(OUTPUT_DIR / "y.npy", y_arr)
+
+    print(f"Saved X.npy and y.npy to {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":
