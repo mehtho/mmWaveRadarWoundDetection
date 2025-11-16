@@ -164,6 +164,30 @@ def run_pairwise_experiment(
 
 
 # -----------------------------
+# 3-class: dry vs water 5.0 vs jelly 7.5
+# -----------------------------
+def run_dry_water5_jelly75(X, y):
+    allowed = {0.0, 5.0, 7.5}
+    X_sub, y_sub = filter_by_labels(X, y, allowed)
+
+    if X_sub.shape[0] == 0:
+        raise ValueError(
+            "No samples left after filtering for dry/water5/jelly75!")
+
+    y_tri = np.empty_like(y_sub, dtype=object)
+    y_tri[y_sub == 0.0] = "dry_0.0"
+    y_tri[y_sub == 5.0] = "water_5.0"
+    y_tri[y_sub == 7.5] = "jelly_7.5"
+
+    print("\nDRY 0.0 vs WATER 5.0 vs JELLY 7.5 distribution:")
+    unique, counts = np.unique(y_tri, return_counts=True)
+    for u, c in zip(unique, counts):
+        print(f"  {u}: {c} samples")
+
+    run_xgb_cv(X_sub, y_tri, title="DRY (0.0) vs WATER 5.0 vs JELLY 7.5")
+
+
+# -----------------------------
 # Main
 # -----------------------------
 def main():
@@ -215,6 +239,9 @@ def main():
         name_b="jelly_7.5",
         title="WATER 5.0 vs JELLY 7.5",
     )
+
+    # 8) DRY 0.0 vs WATER 5.0 vs JELLY 7.5 (3-class)
+    run_dry_water5_jelly75(X, y)
 
 
 if __name__ == "__main__":
