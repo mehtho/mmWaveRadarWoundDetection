@@ -1,6 +1,7 @@
 from pathlib import Path
 import numpy as np
 
+from ablation_vars import ABLATION_VARS
 from features import extract_features
 from filtering import mean_middle
 from range_angle import range_angle_matrix_for_9_files
@@ -87,7 +88,8 @@ def process_all_samples():
     for label, sample_dir, npy_files in iter_sample_dirs():
         print(sample_dir)
         arrays = [np.load(f) for f in npy_files]
-        rams = range_angle_matrix_for_9_files(arrays)  # Returns (9, 50, 5, 11)
+        rams = range_angle_matrix_for_9_files(
+            arrays, ABLATION_VARS.NORM_PER_FRAME)  # Returns (9, 50, 5, 11)
 
         filtered = filter_sample(rams)
 

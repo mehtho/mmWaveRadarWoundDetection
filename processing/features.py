@@ -3,21 +3,20 @@ import numpy as np
 
 def extract_features(arr: np.ndarray) -> np.ndarray:
     """
-    arr: numpy array of shape (9, 5, 11)
+    arr: numpy array of shape (9, RANGE_BINS, ANGLE_BINS)
          [samples, ranges, angles]
 
-    For each sample (0..8) and each range bin (0..4), compute:
+    For each sample and each range bin, compute:
       - index of the largest angle bin  (argmax over axis=2)
       - amplitude at that angle index   (max over axis=2)
       - standard deviation over angles
       - skewness over angles
 
     Returns:
-        features: np.ndarray of shape (9, 5, 4)
         feature order: [max_angle_idx, max_amplitude, std, skewness]
     """
-    if arr.ndim != 3 or arr.shape[1] != 5 or arr.shape[2] != 11:
-        raise ValueError(f"Expected shape (9, 5, 11), got {arr.shape}")
+    if arr.ndim != 3:
+        raise ValueError(f"Expected 3 dims got {arr.shape}")
 
     # 1) Index of largest angle bin (int originally)
     max_idx = np.argmax(arr, axis=2)          # (9, 5)

@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import signal
 
+from ablation_vars import ABLATION_VARS
 from ifxradarsdk.fmcw.types import FmcwSimpleSequenceConfig, FmcwSequenceChirp
 
 config = FmcwSimpleSequenceConfig(
@@ -26,8 +27,8 @@ num_beams = 11
 range_bin_size = 0.027254   # meters (2.7254 cm)
 max_angle_degrees = 40
 
-min_bin = 8
-max_bin = 13
+min_bin = ABLATION_VARS.MIN_BIN
+max_bin = ABLATION_VARS.MAX_BIN
 
 
 def _fft_spectrum(mat, range_window):
@@ -257,7 +258,7 @@ def range_angle_matrix(frame):
     return beam_range_energy
 
 
-def range_angle_matrix_for_9_files(arrays_9):
+def range_angle_matrix_for_9_files(arrays_9, norm_per_frame=False):
     """
     arrays_9: list of 9 arrays, each shaped (100, X, Y)
 
@@ -276,11 +277,12 @@ def range_angle_matrix_for_9_files(arrays_9):
             ram = range_angle_matrix(frame)[min_bin:max_bin, :]
 
             # Normalize *per-sample* (i.e., across all 100 frames)
-            ram_min = np.min(ram)
-            ram_max = np.max(ram)
-            ram_norm = (ram - ram_min) / (ram_max - ram_min + 1e-12)
+            if (norm_per_frame):
+                ram_min = np.min(ram)
+                ram_max = np.max(ram)
+                ram = (ram - ram_min) / (ram_max - ram_min + 1e-12)
 
-            frame_mats.append(ram_norm)
+            frame_mats.append(ram)
         mats.append(np.stack(frame_mats, axis=0))
 
     # Final shape: (9, 100, A, B)
