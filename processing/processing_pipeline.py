@@ -1,6 +1,8 @@
 from pathlib import Path
 import numpy as np
 
+from features import extract_features
+from filtering import mean_middle
 from range_angle import range_angle_matrix_for_9_files
 
 DATASET_DIR = Path("../datasets/Official Testing Data")
@@ -67,43 +69,36 @@ def iter_sample_dirs():
             yield label, subdir, npy_files
 
 
-def transform_sample(
-    arrays: list[np.ndarray],
-    label: float,
-    sample_dir: Path,
+def filter_sample(
+    arrays: list[np.ndarray]
 ):
     """
-    Placeholder for your feature extraction / transformation logic.
+    For feature extraction / transformation logic.
 
     arrays: list of np.ndarray loaded from this sample directory
     label: numeric label, e.g. 0.0, 2.5, 3.75, 5.0, 7.5
     sample_dir: directory where these arrays came from
     """
-    # TODO: replace this with real feature computation
-    stacked = np.stack(arrays, axis=0)
+    transformed = mean_middle(arrays)
 
-    return {
-        "label": label,
-        "sample_dir": str(sample_dir),
-        "shape": stacked.shape,
-    }
+    return transformed
 
 
 def process_all_samples():
     for label, sample_dir, npy_files in iter_sample_dirs():
-        # print(f"Processing sample: label={label}, dir={sample_dir}")
-
         arrays = [np.load(f) for f in npy_files]
         rams = range_angle_matrix_for_9_files(arrays)  # Returns (9, 50, 5, 11)
 
-        result = transform_sample(rams, label=label, sample_dir=sample_dir)
+        filtered = filter_sample(rams)
+
+        features = extract_features(filtered)
 
         # Example of how you might save features later:
         # out_name = f"{sample_dir.name}_label_{label}.npz"
         # out_path = OUTPUT_DIR / out_name
         # np.savez_compressed(out_path, **result)
 
-        print(f"  -> transform result (preview): {result}")
+        print(f"  -> transform result (preview): {features.shape}")
 
 
 if __name__ == "__main__":
