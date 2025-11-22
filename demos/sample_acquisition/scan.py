@@ -1,12 +1,14 @@
+import sys
 import numpy as np
-import time
 
 from ifxradarsdk.fmcw import DeviceFmcw
 from ifxradarsdk.fmcw.types import FmcwSimpleSequenceConfig, FmcwSequenceChirp
 
 from pathlib import Path
 
-NUM_SAMPLES = 100
+# Usage: uv run demos/sample_acquisition/scan.py output/<target dir>
+
+NUM_SAMPLES = 50
 DATA_DIR = "output"
 
 
@@ -21,6 +23,13 @@ def num_rx_antennas_from_rx_mask(rx_mask):
 
 if __name__ == '__main__':
     num_beams = 11
+
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <output_dir>")
+        sys.exit(1)
+
+    DATA_DIR = Path(sys.argv[1])
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     config = FmcwSimpleSequenceConfig(
         frame_repetition_time_s=0.08,
@@ -67,16 +76,13 @@ if __name__ == '__main__':
         # Combine all frames into one ndarray
         data = np.stack(frames, axis=0)
 
-        # Prepare timestamped filename
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}.npy"
+        existing = sorted(
+            [int(p.stem) for p in DATA_DIR.glob("*.npy") if p.stem.isdigit()]
+        )
+        next_index = (existing[-1] + 1) if existing else 1
 
-        # Use pathlib for path operations
-        DATA_DIR = Path(DATA_DIR)
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        filename = f"{next_index}.npy"
         filepath = DATA_DIR / filename
 
-        # Save to file
         np.save(filepath, data)
-
-        print(f"Saved {data.shape} to {filepath}")
+        print(f"Saved {data.shape} → {filepath}")
