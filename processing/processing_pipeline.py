@@ -7,13 +7,12 @@ from filtering import mean_middle
 from range_angle import range_angle_matrix_for_9_files
 
 DATASET_DIR = Path("../datasets/Official Testing Data")
-TRAINING_DIRS = ["j", "w"]          # used only to choose branches to walk
+TRAINING_DIRS = ["j", "w"]
 OUTPUT_DIR = Path("../output/official_features")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Optional: restrict to a known set of label values, if you want
+# Optional: restrict to a known set of label values
 VALID_LABELS = {"0.0", "2.5", "3.75", "5.0", "7.5"}
-
 
 def get_numeric_label(sample_dir: Path) -> float:
     """
@@ -66,35 +65,100 @@ def iter_sample_dirs():
             yield label, subdir, npy_files
 
 
-def filter_sample(
-    arrays: list[np.ndarray]
-):
+def filter_sample(rams: np.ndarray) -> np.ndarray:
     """
     For feature extraction / transformation logic.
 
-    arrays: list of np.ndarray loaded from this sample directory
-    label: numeric label, e.g. 0.0, 2.5, 3.75, 5.0, 7.5
-    sample_dir: directory where these arrays came from
-    """
-    transformed = mean_middle(arrays)
+    rams: np.ndarray of shape (9, 50, RANGE_BINS, ANGLE_BINS)
 
+    Returns:
+        (9, RANGE_BINS, ANGLE_BINS) after temporal averaging
+        across the middle frames
+    """
+    transformed = mean_middle(rams)
     return transformed
 
+def build_dry_baseline_global() -> np.ndarray | None:
+    """
+    Compute a single global dry baseline.
+
+    Returns:
+        baseline: np.ndarray of shape (9, RANGE_BINS, ANGLE_BINS)
+                  or None if no dry samples found.
+    """
+    baseline_sum = None
+    count = 0
+
+    for label, sample_dir, npy_files in iter_sample_dirs():
+        if label != 0.0:
+            continue
+
+        arrays = [np.load(f) for f in npy_files]
+        rams = range_angle_matrix_for_9_files(
+            arrays,
+            ABLATION_VARS.NORM_PER_FRAME
+        )  # (9, 50, R, A)
+        filtered = filter_sample(rams)        # (9, R, A)
+
+        if baseline_sum is None:
+            baseline_sum = filtered.astype(np.float64)
+        else:
+            baseline_sum += filtered
+        count += 1
+
+    if count == 0:
+        print("[WARN] No dry baselines (label 0.0) found at all")
+        return None
+
+    baseline = baseline_sum / count
+    print(f"[INFO] Global dry baseline built from {count} dry sample(s), shape {baseline.shape}")
+    return baseline.astype(np.float32)
+
+def normalize_per_position_with_baseline(arr: np.ndarray, baseline: np.ndarray) -> np.ndarray:
+    """
+    arr: (9, R, A)
+    baseline: (9, R, A)
+    """
+    eps = 1e-12
+    out = np.empty_like(arr)
+
+    for pos in range(arr.shape[0]):
+        frame = arr[pos]
+        base = baseline[pos]
+        base_max = base.max()
+        out[pos] = (frame - base) / (base_max + eps)
+
+    return out
 
 def process_all_samples():
     X = []
     y = []
 
+    baseline = None
+    if ABLATION_VARS.SUBTRACT_BASELINE:
+        print("[INFO] Building GLOBAL dry baseline...")
+        baseline = build_dry_baseline_global()
+
     for label, sample_dir, npy_files in iter_sample_dirs():
         print(sample_dir)
         arrays = [np.load(f) for f in npy_files]
         rams = range_angle_matrix_for_9_files(
-            arrays, ABLATION_VARS.NORM_PER_FRAME)  # Returns (9, 50, 5, 11)
+            arrays,
+            ABLATION_VARS.NORM_PER_FRAME
+        )  # (9, 50, R, A)
 
-        filtered = filter_sample(rams)
+        filtered = filter_sample(rams)   # (9, R, A)
 
-        features = extract_features(filtered)  # Returns (9, 5, 4)
+        # baseline subtraction
+        if ABLATION_VARS.SUBTRACT_BASELINE and label != 0.0:
+            filtered = filtered - baseline
 
+        # new: per-position normalization
+        if ABLATION_VARS.NORM_PER_POSITION:
+            if ABLATION_VARS.SUBTRACT_BASELINE:
+                filtered = normalize_per_position_with_baseline(filtered, baseline)
+
+        features = extract_features(filtered)
         X.append(features.flatten())
         y.append(label)
 

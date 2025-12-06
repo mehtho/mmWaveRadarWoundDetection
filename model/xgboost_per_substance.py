@@ -2,18 +2,18 @@
 
 from pathlib import Path
 import numpy as np
+from collections import Counter
 
-from sklearn.model_selection import StratifiedKFold, cross_val_score, cross_val_predict
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.base import clone
 
-from xgboost import XGBClassifier  # <-- NEW
+from xgboost import XGBClassifier  # <-- XGBoost
 
 OUTPUT_DIR = Path("../output/official_features")
 
-# -----------------------------
 # Subsets to evaluate
-# -----------------------------
 WATER_LABELS = {0.0, 2.5, 5.0}
 JELLY_LABELS = {0.0, 3.75, 7.5}
 ALL_LABELS = {0.0, 2.5, 3.75, 5.0, 7.5}
@@ -22,10 +22,7 @@ ALL_LABELS = {0.0, 2.5, 3.75, 5.0, 7.5}
 WATER_ONLY = {2.5, 5.0}
 JELLY_ONLY = {3.75, 7.5}
 
-
-# -----------------------------
 # Load X and y
-# -----------------------------
 def load_data():
     X = np.load(OUTPUT_DIR / "X.npy")
     y = np.load(OUTPUT_DIR / "y.npy")
@@ -36,19 +33,13 @@ def load_data():
     y = y.reshape(-1)
     return X, y
 
-
-# -----------------------------
 # Filter dataset to chosen labels
-# -----------------------------
 def filter_by_labels(X, y, allowed_labels):
     mask = np.isin(y, list(allowed_labels))
     return X[mask], y[mask]
 
-
-# -----------------------------
 # Model evaluation (XGBoost)
-# -----------------------------
-def run_xgb_cv(X, y, title="Experiment"):
+def run_xgb_cv(X, y, title="Experiment", class_weight=None):
     print("\n=====================================")
     print(f"   {title}")
     print("=====================================")
@@ -63,6 +54,16 @@ def run_xgb_cv(X, y, title="Experiment"):
 
     n_classes = len(le.classes_)
 
+    # How many samples per class? (for safe StratifiedKFold)
+    class_counts = Counter(y_enc)
+    min_class_count = min(class_counts.values())
+
+    if min_class_count < 2:
+        print(f"\n[WARN] Not enough samples per class for CV (min={min_class_count}). Skipping.")
+        return
+
+    n_splits = min(9, min_class_count)
+
     # Choose objective based on number of classes
     if n_classes == 2:
         objective = "binary:logistic"
@@ -73,7 +74,7 @@ def run_xgb_cv(X, y, title="Experiment"):
         eval_metric = "mlogloss"
         extra_params = {"num_class": n_classes}
 
-    xgb = XGBClassifier(
+    base_xgb = XGBClassifier(
         n_estimators=300,
         max_depth=4,
         learning_rate=0.05,
@@ -88,14 +89,38 @@ def run_xgb_cv(X, y, title="Experiment"):
         **extra_params,
     )
 
-    n_splits = min(9, len(y_enc))
     cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
 
-    scores = cross_val_score(xgb, X, y_enc, cv=cv, scoring="accuracy")
+    #per-class weights 
+    sample_weight = None
+    if class_weight is not None:
+        sample_weight = np.ones_like(y_enc, dtype=float)
+        for idx, cls in enumerate(le.classes_):
+            if cls in class_weight:
+                sample_weight[y_enc == idx] *= class_weight[cls]
+
+    # Manual CV
+    scores = []
+    y_pred = np.zeros_like(y_enc)
+
+    for fold_idx, (train_idx, test_idx) in enumerate(cv.split(X, y_enc)):
+        xgb = clone(base_xgb)
+
+        if sample_weight is not None:
+            sw_train = sample_weight[train_idx]
+            xgb.fit(X[train_idx], y_enc[train_idx], sample_weight=sw_train)
+        else:
+            xgb.fit(X[train_idx], y_enc[train_idx])
+
+        pred = xgb.predict(X[test_idx])
+        y_pred[test_idx] = pred
+
+        acc = (pred == y_enc[test_idx]).mean()
+        scores.append(acc)
+
+    scores = np.array(scores)
     print(f"\nPer-fold accuracy: {np.round(scores, 3)}")
     print(f"Mean accuracy: {scores.mean():.3f} ± {scores.std():.3f}")
-
-    y_pred = cross_val_predict(xgb, X, y_enc, cv=cv)
 
     print("\nClassification report:")
     print(
@@ -110,10 +135,7 @@ def run_xgb_cv(X, y, title="Experiment"):
     print("Confusion matrix:")
     print(confusion_matrix(y_enc, y_pred))
 
-
-# -----------------------------
 # Water vs Jelly (binary, exclude dry)
-# -----------------------------
 def run_water_vs_jelly(X, y):
     allowed = WATER_ONLY | JELLY_ONLY
     X_sub, y_sub = filter_by_labels(X, y, allowed)
@@ -132,10 +154,7 @@ def run_water_vs_jelly(X, y):
 
     run_xgb_cv(X_sub, y_bin, title="WATER VS JELLY (2.5/5.0 vs 3.75/7.5)")
 
-
-# -----------------------------
 # Generic pairwise experiment
-# -----------------------------
 def run_pairwise_experiment(
     X,
     y,
@@ -162,17 +181,15 @@ def run_pairwise_experiment(
 
     run_xgb_cv(X_sub, y_pair, title=title)
 
-
-# -----------------------------
 # 3-class: dry vs water 5.0 vs jelly 7.5
-# -----------------------------
 def run_dry_water5_jelly75(X, y):
     allowed = {0.0, 5.0, 7.5}
     X_sub, y_sub = filter_by_labels(X, y, allowed)
 
     if X_sub.shape[0] == 0:
         raise ValueError(
-            "No samples left after filtering for dry/water5/jelly75!")
+            "No samples left after filtering for dry/water5/jelly75!"
+        )
 
     y_tri = np.empty_like(y_sub, dtype=object)
     y_tri[y_sub == 0.0] = "dry_0.0"
@@ -201,8 +218,18 @@ def main():
     Xj, yj = filter_by_labels(X, y, JELLY_LABELS)
     run_xgb_cv(Xj, yj, title="JELLY ONLY (0, 3.75, 7.5)")
 
-    # 3) ALL LABELS (original)
-    run_xgb_cv(X, y, title="ALL LABELS (0, 2.5, 3.75, 5.0, 7.5)")
+    # 3) ALL LABELS 
+    all_class_weight = {
+        2.5: 1.75,
+        3.75: 1.75,
+        # 0.0 and 7.5 default to 1.0
+    }
+    run_xgb_cv(
+        X,
+        y,
+        title="ALL LABELS (0, 2.5, 3.75, 5.0, 7.5)",
+        class_weight=all_class_weight,
+    )
 
     # 4) WATER VS JELLY (binary, exclude dry)
     run_water_vs_jelly(X, y)
